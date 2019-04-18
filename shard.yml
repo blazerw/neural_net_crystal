@@ -1,0 +1,15 @@
+name: neural_net_crystal
+version: 0.1.0
+description: A neural network.
+
+authors:
+  - Randy Wilson <randy.wilson@bounteous.com>
+
+crystal: 0.27.0
+
+license: MIT
+
+development_dependencies:
+  spec2:
+    github: ThunderKey/spec2.cr
+    branch: fix-with-crystal-version-0.24.1
