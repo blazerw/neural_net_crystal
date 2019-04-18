@@ -1,6 +1,8 @@
 # neural_net_crystal
 
-TODO: Write a description here
+A neural network shard for Crystal based on https://github.com/gbuesing/neural-net-ruby
+
+NOTE: Still a work in progress, however the first spec is a working example of how to use this shard.
 
 ## Installation
 
@@ -18,6 +20,7 @@ dependencies:
 require "neural_net_crystal"
 ```
 
+SEE: spec/neural_net_crystal_spec.cr#examples, first example
 TODO: Write usage instructions here
 
 ## Development
