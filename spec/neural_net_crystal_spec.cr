@@ -108,69 +108,62 @@ Spec2.describe NeuralNetCrystal do
 
       # MNIST loading code adapted from here:
       # https://github.com/shuyo/iir/blob/master/neural/mnist.rb
-      n_rows = n_cols = nil
-      images : Array(Bytes) | Nil
-#      labels = []
-#      Zlib::GzipReader.open(mnist_images_file) do |f|
-#        magic, n_images = f.read(8).unpack("N2")
-#        raise "This is not MNIST image file" if magic != 2051
-#        n_rows, n_cols = f.read(8).unpack("N2")
-#        n_images.times do
-#          images << f.read(n_rows * n_cols)
-#        end
-#      end
-      puts "1"
+      n_rows = n_cols : UInt32 | Nil = nil
+      images = [] of Bytes
+      labels = [] of Int32
       File.open(mnist_images_file) do |f|
-        puts "2"
         Gzip::Reader.open(f) do |z|
-          puts "3"
-          puts "header:#{z.header.inspect}"
           magic = z.read_bytes(UInt32, IO::ByteFormat::BigEndian)
+          raise "This is not MNIST image file" if magic != 2051
           n_images = z.read_bytes(UInt32, IO::ByteFormat::BigEndian)
-          images = Array(Bytes).new(n_images)
-          puts "magic: #{magic}, n_images: #{n_images}"
           n_rows = z.read_bytes(UInt32, IO::ByteFormat::BigEndian)
           n_cols = z.read_bytes(UInt32, IO::ByteFormat::BigEndian)
-          puts "n_rows: #{n_rows}, n_cols: #{n_cols}"
           n_images.times do
             image_bytes = Bytes.new(n_rows * n_cols)
             z.read(image_bytes)
+            puts "image_bytes: #{image_bytes.inspect}"
             images << image_bytes
           end
         end
       end
 
-#      Zlib::GzipReader.open(mnist_labels_file) do |f|
-#        magic, n_labels = f.read(8).unpack("N2")
-#        raise "This is not MNIST label file" if magic != 2049
-#        labels = f.read(n_labels).unpack('C*')
-#      end
-#
-#      # collate image and label data
-#      data = images.map.with_index do |image, i|
-#        target = [0]*10
-#        target[labels[i]] = 1
-#        [image, target]
-#      end
-#
-#      # data.shuffle!
-#
-#      train_size = (ARGV[0] || 100).to_i
-#      test_size = 100
-#      hidden_layer_size = (ARGV[1] || 25).to_i
-#
-#      # maps input to float between 0 and 1
-#      normalize = -> (val, fromLow, fromHigh, toLow, toHigh) {  (val - fromLow) * (toHigh - toLow) / (fromHigh - fromLow).to_f }
-#
-#      x_data, y_data = [], []
-#
-#      data.slice(0,train_size + test_size).each do |row|
-#        image = row[0].unpack('C*')
-#        image = image.map {|v| normalize.(v, 0, 256, 0, 1)}
-#        x_data << image
-#        y_data << row[1]
-#      end
-#
+      File.open(mnist_labels_file) do |f|
+        Gzip::Reader.open(f) do |z|
+          magic = z.read_bytes(UInt32, IO::ByteFormat::BigEndian)
+          raise "This is not MNIST label file" if magic != 2049
+          n_labels = z.read_bytes(UInt32, IO::ByteFormat::BigEndian)
+          n_labels.times do
+            labels << (z.read_byte || 0_u8).to_i32
+          end
+        end
+      end
+
+      # collate image and label data
+      data = images.map_with_index do |image, i|
+        target = [0]*10
+        target[labels[i]] = 1
+        [image, target]
+      end
+      # puts "data: #{data.inspect}"
+
+      # data.shuffle!
+
+      train_size = (ARGV[0] || 100).to_i
+      test_size = 100
+      hidden_layer_size = (ARGV[1] || 25).to_i
+
+      # maps input to float between 0 and 1
+      normalize = -> (val, fromLow, fromHigh, toLow, toHigh) {  (val - fromLow) * (toHigh - toLow) / (fromHigh - fromLow).to_f }
+
+      x_data, y_data = [], []
+
+      data.slice(0, train_size + test_size).each do |row|
+        image = row[0].unpack('C*')
+        image = image.map {|v| normalize.(v, 0, 256, 0, 1)}
+        x_data << image
+        y_data << row[1]
+      end
+
 #      x_train = x_data.slice(0, train_size)
 #      y_train = y_data.slice(0, train_size)
 #
