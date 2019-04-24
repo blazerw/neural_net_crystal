@@ -95,7 +95,6 @@ Spec2.describe NeuralNetCrystal do
     end
 
     it "OCRs hadwriting" do
-
       # This neural net performs OCR on handwritten digits from the MNIST dataset
       # MNIST datafiles can be downloaded here: http://yann.lecun.com/exdb/mnist/
 
@@ -121,7 +120,7 @@ Spec2.describe NeuralNetCrystal do
           n_cols = z.read_bytes(UInt32, IO::ByteFormat::BigEndian)
           n_images.times do
             image_bytes = Bytes.new(n_rows * n_cols)
-            z.read(image_bytes)
+            z.read_fully(image_bytes)
             images << image_bytes
           end
         end
@@ -144,16 +143,6 @@ Spec2.describe NeuralNetCrystal do
         target[labels[i]] = 1
         {image, target}
       end
-      puts "data: #{data.class}"
-      puts "data[0]: #{data[0].class}"
-      puts "data[0]: #{data[0].inspect}"
-      puts "data[0][0]: #{data[0][0].class}"
-      puts "data[0][0]: #{data[0][0].inspect}"
-      puts "[0]*10: #{[0]*10}"
-      # data: Array(Array(Array(Int32) | Slice(UInt8)))
-      # data[0]: Array(Array(Int32) | Slice(UInt8))
-      # data[0,0]: Array(Array(Array(Int32) | Slice(UInt8)))
-
 
       # data.shuffle!
 
@@ -168,71 +157,67 @@ Spec2.describe NeuralNetCrystal do
       y_data = Array(Array(Int32)).new(train_size + test_size)
 
       data[0, train_size + test_size].each do |row|
-        # image = row[0].unpack('C*')
-        # image = row[0].map {|b| b.to_i32}
-        image_norm = row[0].map {|v| normalize.call(v.to_i32, 0, 256, 0, 1)}.to_a
-        x_data << image_norm
+        image = row[0].map {|v| normalize.call(v.to_i32, 0, 256, 0, 1)}.to_a
+        x_data << image
         y_data << row[1]
       end
-      puts "x_data: #{x_data.class}"
-      puts "x_data: #{x_data.inspect}"
-      puts "x_data[0]: #{x_data[0].class}"
-      puts "x_data[0]: #{x_data[0].inspect}"
 
-#      x_train = x_data.slice(0, train_size)
-#      y_train = y_data.slice(0, train_size)
-#
-#      x_test = x_data.slice(train_size, test_size)
-#      y_test = y_data.slice(train_size, test_size)
-#
-#
-#      puts "Initializing network with #{hidden_layer_size} hidden neurons."
-#      nn = NeuralNet.new [28*28, hidden_layer_size, 50, 10]
-#
-#      error_rate = -> (errors, total) { ((errors / total.to_f) * 100).round }
-#
-#      mse = -> (actual, ideal) {
-#        errors = actual.zip(ideal).map {|a, i| a - i }
-#        (errors.inject(0) {|sum, err| sum += err**2}) / errors.length.to_f
-#      }
-#
-#      decode_output = -> (output) { (0..9).max_by {|i| output[i]} }
-#      prediction_success = -> (actual, ideal) { decode_output.(actual) == decode_output.(ideal) }
-#
-#      run_test = -> (nn, inputs, expected_outputs) {
-#        success, failure, errsum = 0,0,0
-#        inputs.each.with_index do |input, i|
-#          output = nn.run input
-#          prediction_success.(output, expected_outputs[i]) ? success += 1 : failure += 1
-#          errsum += mse.(output, expected_outputs[i])
-#        end
-#        [success, failure, errsum / inputs.length.to_f]
-#      }
-#
-#      puts "Testing the untrained network..."
-#
-#      success, failure, avg_mse = run_test.(nn, x_test, y_test)
-#
-#      puts "Untrained classification success: #{success}, failure: #{failure} (classification error: #{error_rate.(failure, x_test.length)}%, mse: #{(avg_mse * 100).round(2)}%)"
-#
-#      puts "\nTraining the network with #{train_size} data samples...\n\n"
-#      t = Time.now
-#      result = nn.train(x_train, y_train, log_every: 1, max_iterations: 100, error_threshold:  0.01)
-#
-#      puts "\nDone training the network: #{result[:iterations]} iterations, #{(result[:error] * 100).round(2)}% mse, #{(Time.now - t).round(1)}s"
-#
-#      # # Marshal test
-#      # dumpfile = 'mnist/network.dump'
-#      # File.write(dumpfile, Marshal.dump(nn))
-#      # nn = Marshal.load(File.read(dumpfile))
-#
-#      puts "\nTesting the trained network..."
-#
-#      success, failure, avg_mse = run_test.(nn, x_test, y_test)
-#
-#      puts "Trained classification success: #{success}, failure: #{failure} (classification error: #{error_rate.(failure, x_test.length)}%, mse: #{(avg_mse * 100).round(2)}%)"
-#
-#      expect(success > failure).to be_truthy
+      x_train = x_data[0, train_size]
+      y_train = y_data[0, train_size]
+
+      x_test = x_data[train_size, test_size]
+      y_test = y_data[train_size, test_size]
+
+
+      puts "Initializing network with #{hidden_layer_size} hidden neurons."
+      nn = NeuralNet.new [28*28, hidden_layer_size, 50, 10]
+
+      error_rate = -> (errors : Int32, total : Int32) { ((errors.to_f64 / total.to_f64) * 100_f64).round }
+
+      mse = -> (actual : Array(Float64), ideal : Array(Int32)) {
+        errors = actual.zip(ideal).map {|a, i| a - i }
+        (errors.reduce(0) {|sum, err| sum += err**2}) / errors.size.to_f64
+      }
+
+      decode_output = -> (output : Array(Float64) | Array(Int32)) { (0..9).max_by {|i| output[i]} }
+      prediction_success = -> (actual : Array(Float64), ideal : Array(Int32)) {
+        decode_output.call(actual) == decode_output.call(ideal)
+      }
+
+      run_test = -> (nn : NeuralNet, inputs : Array(Array(Float64)), expected_outputs : Array(Array(Int32))) {
+        success, failure, errsum = 0,0,0
+        inputs.each.with_index do |input, i|
+          output = nn.run input
+          prediction_success.call(output, expected_outputs[i]) ? (success = success + 1) : (failure = failure + 1)
+          errsum += mse.call(output, expected_outputs[i])
+        end
+        [success, failure, errsum / inputs.size.to_f]
+      }
+
+      puts "Testing the untrained network..."
+
+      success, failure, avg_mse = run_test.call(nn, x_test, y_test)
+
+      puts "Untrained classification success: #{success}, failure: #{failure} (classification error: #{error_rate.call(failure.to_i32, x_test.size)}%, mse: #{(avg_mse * 100).round(2)}%)"
+
+      puts "\nTraining the network with #{train_size} data samples...\n\n"
+      t = Time.now
+      result = nn.train(x_train, y_train, { log_every: 1, max_iterations: 100, error_threshold:  0.01 })
+
+      puts "\nDone training the network: #{result[:iterations]} iterations, #{(result[:error] * 100).round(2)}% mse, #{(Time.now - t).total_seconds.round(1)}s"
+
+      # # Marshal test
+      # dumpfile = 'mnist/network.dump'
+      # File.write(dumpfile, Marshal.dump(nn))
+      # nn = Marshal.load(File.read(dumpfile))
+
+      puts "\nTesting the trained network..."
+
+      success, failure, avg_mse = run_test.call(nn, x_test, y_test)
+
+      puts "Trained classification success: #{success}, failure: #{failure} (classification error: #{error_rate.call(failure.to_i32, x_test.size)}%, mse: #{(avg_mse * 100).round(2)}%)"
+
+      expect(success > failure).to be_truthy
 #
 #      # require_relative './image_grid'
 #      # ImageGrid.new(nn.weights[1]).to_file 'examples/mnist/hidden_weights.png'
