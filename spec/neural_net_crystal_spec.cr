@@ -108,6 +108,7 @@ Spec2.describe NeuralNetCrystal do
 
       # MNIST loading code adapted from here:
       # https://github.com/shuyo/iir/blob/master/neural/mnist.rb
+      # (Well, the Ruby code used the above, the Crystal came next.)
       n_rows = n_cols : UInt32 | Nil = nil
       images = [] of Bytes
       labels = [] of Int32
@@ -121,7 +122,6 @@ Spec2.describe NeuralNetCrystal do
           n_images.times do
             image_bytes = Bytes.new(n_rows * n_cols)
             z.read(image_bytes)
-            puts "image_bytes: #{image_bytes.inspect}"
             images << image_bytes
           end
         end
@@ -142,27 +142,42 @@ Spec2.describe NeuralNetCrystal do
       data = images.map_with_index do |image, i|
         target = [0]*10
         target[labels[i]] = 1
-        [image, target]
+        {image, target}
       end
-      # puts "data: #{data.inspect}"
+      puts "data: #{data.class}"
+      puts "data[0]: #{data[0].class}"
+      puts "data[0]: #{data[0].inspect}"
+      puts "data[0][0]: #{data[0][0].class}"
+      puts "data[0][0]: #{data[0][0].inspect}"
+      puts "[0]*10: #{[0]*10}"
+      # data: Array(Array(Array(Int32) | Slice(UInt8)))
+      # data[0]: Array(Array(Int32) | Slice(UInt8))
+      # data[0,0]: Array(Array(Array(Int32) | Slice(UInt8)))
+
 
       # data.shuffle!
 
-      train_size = (ARGV[0] || 100).to_i
+      train_size = (ARGV[0]? || 100).to_i
       test_size = 100
-      hidden_layer_size = (ARGV[1] || 25).to_i
+      hidden_layer_size = (ARGV[1]? || 25).to_i
 
       # maps input to float between 0 and 1
-      normalize = -> (val, fromLow, fromHigh, toLow, toHigh) {  (val - fromLow) * (toHigh - toLow) / (fromHigh - fromLow).to_f }
+      normalize = -> (val : Int32, fromLow : Int32, fromHigh : Int32, toLow : Int32, toHigh : Int32) {  (val - fromLow) * (toHigh - toLow) / (fromHigh - fromLow).to_f }
 
-      x_data, y_data = [], []
+      x_data = Array(Array(Float64)).new(train_size + test_size)
+      y_data = Array(Array(Int32)).new(train_size + test_size)
 
-      data.slice(0, train_size + test_size).each do |row|
-        image = row[0].unpack('C*')
-        image = image.map {|v| normalize.(v, 0, 256, 0, 1)}
-        x_data << image
+      data[0, train_size + test_size].each do |row|
+        # image = row[0].unpack('C*')
+        # image = row[0].map {|b| b.to_i32}
+        image_norm = row[0].map {|v| normalize.call(v.to_i32, 0, 256, 0, 1)}.to_a
+        x_data << image_norm
         y_data << row[1]
       end
+      puts "x_data: #{x_data.class}"
+      puts "x_data: #{x_data.inspect}"
+      puts "x_data[0]: #{x_data[0].class}"
+      puts "x_data[0]: #{x_data[0].inspect}"
 
 #      x_train = x_data.slice(0, train_size)
 #      y_train = y_data.slice(0, train_size)
