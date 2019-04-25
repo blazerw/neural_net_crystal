@@ -3,7 +3,10 @@ require "gzip"
 
 Spec2.describe NeuralNetCrystal do
   context "examples" do
-    pending "predicts iris species" do
+    # ########################################################################
+    # # Iris Species Predictor
+    # ########################################################################
+    it "predicts iris species" do
       # This neural network will predict the species of an iris based on sepal and petal size
       # Dataset: http://en.wikipedia.org/wiki/Iris_flower_data_set
 
@@ -21,7 +24,8 @@ Spec2.describe NeuralNetCrystal do
       y_data = rows.map {|row| label_encodings[row[4]] }
 
       # Normalize data values before feeding into network
-      normalize = -> (val : Float64, high : Float64, low : Float64) {  (val - low) / (high - low) } # maps input to float between 0 and 1
+      # maps input to float between 0 and 1
+      normalize = -> (val : Float64, high : Float64, low : Float64) {  (val - low) / (high - low) }
 
       columns = (0..3).map do |i|
         x_data.map {|row| row[i] }
@@ -81,7 +85,6 @@ Spec2.describe NeuralNetCrystal do
                         log_every: 100 }
                        )
 
-      # puts result
       puts "\nDone training the network: #{result[:iterations]} iterations, #{(result[:error] * 100).round(2)}% mse, #{(Time.now - t1).total_seconds.round(1)}s"
 
 
@@ -94,6 +97,9 @@ Spec2.describe NeuralNetCrystal do
       expect(success > failure).to be_truthy
     end
 
+    # ########################################################################
+    # # MNIST (OCR)                                                          #
+    # ########################################################################
     it "OCRs hadwriting" do
       # This neural net performs OCR on handwritten digits from the MNIST dataset
       # MNIST datafiles can be downloaded here: http://yann.lecun.com/exdb/mnist/
@@ -176,7 +182,7 @@ Spec2.describe NeuralNetCrystal do
 
       mse = -> (actual : Array(Float64), ideal : Array(Int32)) {
         errors = actual.zip(ideal).map {|a, i| a - i }
-        (errors.reduce(0) {|sum, err| sum += err**2}) / errors.size.to_f64
+        (errors.reduce(0) {|sum, err| sum += err**2}) / errors.size.to_f
       }
 
       decode_output = -> (output : Array(Float64) | Array(Int32)) { (0..9).max_by {|i| output[i]} }
@@ -215,12 +221,118 @@ Spec2.describe NeuralNetCrystal do
 
       success, failure, avg_mse = run_test.call(nn, x_test, y_test)
 
+      # puts result
       puts "Trained classification success: #{success}, failure: #{failure} (classification error: #{error_rate.call(failure.to_i32, x_test.size)}%, mse: #{(avg_mse * 100).round(2)}%)"
 
       expect(success > failure).to be_truthy
 #
 #      # require_relative './image_grid'
 #      # ImageGrid.new(nn.weights[1]).to_file 'examples/mnist/hidden_weights.png'
+    end
+
+    # ########################################################################
+    # # Miles per Gallon                                                     #
+    # ########################################################################
+    it "miles per gallons" do
+      # Dataset available at https://archive.ics.uci.edu/ml/datasets/Auto+MPG
+      rows = [] of Array(String)
+      File.each_line("spec/resources/auto-mpg.data") do |line|
+        csv_line = line.gsub(/  +/, ",")
+        new_line = csv_line.split(",")
+        rows << new_line
+      end
+
+      rows.shuffle!
+
+      # maps input to float between 0 and 1
+      normalize = -> (val : Float64, fromLow : Int32, fromHigh : Int32, toLow : Int32, toHigh : Int32) {  (val - fromLow) * (toHigh - toLow) / (fromHigh - fromLow).to_f }
+
+      x_data = [] of Array(Float64)
+      y_data = [] of Array(Float64)
+
+      rows.each do |row|
+        mpg = normalize.call(row[0].to_f, 0, 60, 0, 1)
+        cylinders = normalize.call(row[1].to_f, 2, 12, 0, 1)
+        displacement = normalize.call(row[2].to_f, 10, 1000, 0, 1)
+        horsepower = normalize.call(row[3].to_f, 1, 1000, 0, 1)
+        weight = normalize.call(row[4].to_f, 100, 5000, 0, 1)
+
+        x_data << [cylinders, displacement, horsepower, weight]
+        y_data << [mpg]
+      end
+
+      test_size = 100
+      train_size = rows.size - test_size
+
+      x_train = x_data[0, train_size]
+      y_train = y_data[0, train_size]
+      x_test = x_data[train_size, test_size]
+      y_test = y_data[train_size, test_size]
+
+      to_mpg = -> (flt : Float64) { normalize.call(flt, 0, 1, 0, 60) }
+
+      mse = -> (actual : Array(Float64), ideal : Array(Float64)) {
+        errors = actual.zip(ideal).map {|a, i| a - i }
+        (errors.reduce(0) {|sum, err| sum += err**2}) / errors.size.to_f
+      }
+
+      run_test = -> (nn : NeuralNet, inputs : Array(Array(Float64)), expected_outputs : Array(Array(Float64))) {
+        mpg_err, errsum = 0, 0
+        outputs = [] of Array(Float64)
+
+        inputs.each.with_index do |input, i|
+          output = nn.run input
+          outputs << output
+          mpg_err = mpg_err + (to_mpg.call(output[0]) - to_mpg.call(expected_outputs[i][0])).abs
+
+          errsum += mse.call(output, expected_outputs[i])
+        end
+
+        y_mean = expected_outputs.reduce(0.0) { |sum, val| sum + val[0] } / expected_outputs.size
+        y_sum_squares = expected_outputs.map{|val| (val[0] - y_mean)**2 }.reduce { |sum, n| sum + n }
+        y_residual_sum_squares = outputs.zip(expected_outputs).map {|out, expected| (expected[0] - out[0])**2 }.reduce { |sum, n| sum + n }
+        r_squared = 1.0 - (y_residual_sum_squares / y_sum_squares)
+
+        [mpg_err / inputs.size.to_f, errsum / inputs.size.to_f, r_squared]
+      }
+
+      show_examples = -> (nn : NeuralNet, x : Array(Array(Float64)), y : Array(Array(Float64))) {
+        puts "Actual\tPredict\tError (mpg)"
+        10.times do |i|
+          output = nn.run x[i]
+          predicted = to_mpg.call(output[0])
+          actual = to_mpg.call(y[i][0])
+          puts "#{actual.round(1)}\t#{predicted.round(1)}\t#{(predicted - actual).abs.round(1)}"
+        end
+      }
+
+      nn = NeuralNet.new [4, 4, 1]
+
+      puts "Testing the untrained network..."
+      mpg_err_b, avg_mse, r_squared = run_test.call(nn, x_test, y_test)
+      puts "Average prediction error: #{mpg_err_b.round(2)} mpg (mse: #{(avg_mse * 100).round(2)}%, r-squared: #{r_squared.round(2)})"
+
+      # puts "\nUntrained test examples (first 10):"
+      # show_examples.(nn, x_test, y_test)
+
+      puts "\nTraining the network...\n\n"
+      t1 = Time.now
+      result = nn.train(x_train, y_train, { error_threshold: 0.005,
+                        max_iterations: 100,
+                        log_every: 10 }
+                       )
+
+      # puts result
+      puts "\nDone training the network: #{result[:iterations]} iterations, #{(result[:error] * 100).round(2)}% mse, #{(Time.now - t1).total_seconds.round(1)}s"
+
+      puts "\nTesting the trained network..."
+      mpg_err_a, avg_mse, r_squared = run_test.call(nn, x_test, y_test)
+      puts "Average prediction error: #{mpg_err_a.round(2)} mpg (mse: #{(avg_mse * 100).round(2)}%, r-squared: #{r_squared.round(2)})"
+
+      puts "\nTrained test examples (first 10):"
+      show_examples.call(nn, x_test, y_test)
+
+      expect(mpg_err_a < mpg_err_b).to be_truthy
     end
   end
 end
