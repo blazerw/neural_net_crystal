@@ -117,7 +117,7 @@ class NeuralNet
                        end
 
         output = @outputs.not_nil![layer][neuron]
-        activation_derivative = output * (1.0 - output)
+        activation_derivative = output * (1_f64 - output)
 
         delta = deltas[layer][neuron] = neuron_error * activation_derivative
 
@@ -229,7 +229,7 @@ class NeuralNet
     @shape.size - 1
   end
 
-  private def sigmoid(x)
+  private def sigmoid(x : Float64) : Float64
     1 / (1 + Math.exp(-x))
   end
 
